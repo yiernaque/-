@@ -302,7 +302,8 @@ export function getPaletteLab() {
   return _paletteLab;
 }
 
-// ===== 找最近 Mard 颜色（ΔE2000）=====
+// ===== 找最近 Mard 颜色（ΔE2000 + 饱和度门控）=====
+// 饱和度门控：低色度像素不会被映射到高饱和度色板颜色（防止灰/白雪被映射成紫色）
 export function findNearestMardColor(
   r: number,
   g: number,
@@ -311,12 +312,29 @@ export function findNearestMardColor(
 ): MardColor {
   const paletteLab = getPaletteLab();
   const pixelLab = rgbToLab(r, g, b);
+
+  // 像素的色度 C* = sqrt(a*² + b*²)
+  const pixelChroma = Math.sqrt(pixelLab[1] ** 2 + pixelLab[2] ** 2);
+
   let minDist = Infinity;
   let nearest = paletteLab[0].color;
 
   for (const { color, lab } of paletteLab) {
     if (allowedCodes && !allowedCodes.has(color.code)) continue;
-    const d = deltaE2000(pixelLab, lab);
+
+    let d = deltaE2000(pixelLab, lab);
+
+    // 饱和度门控：像素色度低 → 对高饱和色板颜色施加惩罚
+    // 防止灰、白、浅色像素被映射到鲜艳的紫色/红色等
+    const paletteChroma = Math.sqrt(lab[1] ** 2 + lab[2] ** 2);
+    if (pixelChroma < 8 && paletteChroma > 18) {
+      d += 30; // 几乎无色像素：强烈惩罚彩色
+    } else if (pixelChroma < 18 && paletteChroma > 30) {
+      d += 15; // 低饱和像素：适度惩罚高饱和
+    } else if (pixelChroma < 28 && paletteChroma > 50) {
+      d += 8;  // 中等饱和像素：轻微惩罚极高饱和
+    }
+
     if (d < minDist) {
       minDist = d;
       nearest = color;
