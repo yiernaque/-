@@ -326,19 +326,32 @@ export function findNearestMardColor(
     const paletteChroma = Math.sqrt(lab[1] ** 2 + lab[2] ** 2);
     const paletteL      = lab[0];
 
-    // ① 饱和度门控：低色度像素不映射到高饱和颜色（防灰/白→紫）
-    if (pixelChroma < 8  && paletteChroma > 18) d += 30;
-    else if (pixelChroma < 18 && paletteChroma > 30) d += 15;
-    else if (pixelChroma < 28 && paletteChroma > 50) d += 8;
+    const pixelA    = pixelLab[1];   // a*：正=红，负=绿
+    const paletteA  = lab[1];
 
-    // ② 亮度差惩罚：像素亮但色板颜色暗（防止浅色皮肤→深红）
-    // 亮像素(L>58) 不应该匹配到深色(L<52)的高饱和色板颜色
-    if (pixelL > 58 && paletteL < 52 && paletteChroma > 40) {
-      d += (pixelL - paletteL) * 0.55;   // 亮度差越大，惩罚越重
+    // ① 饱和度门控：低色度像素不映射到高饱和颜色（防灰/白→紫）
+    if      (pixelChroma < 8  && paletteChroma > 18) d += 32;
+    else if (pixelChroma < 18 && paletteChroma > 30) d += 18;
+    else if (pixelChroma < 28 && paletteChroma > 50) d += 10;
+
+    // ② 亮度差惩罚：像素比色板颜色亮很多时，不允许匹配到深色高饱和颜色
+    // 阈值从 L>58 降到 L>48，覆盖皮肤中间调
+    if (pixelL > 48 && paletteL < 55 && paletteChroma > 35) {
+      d += (pixelL - paletteL) * 0.65;
     }
-    // 暗像素(L<45) 不应该匹配到亮色(L>62)的高饱和色板颜色
     if (pixelL < 45 && paletteL > 62 && paletteChroma > 35) {
       d += (paletteL - pixelL) * 0.4;
+    }
+
+    // ③ a* 轴（红度轴）直接防护：
+    // 像素不够红(a*<18) → 不应映射到高红度色板(a*>42)
+    // 专门阻止皮肤/粉色被拉到鲜红 F 系
+    if (pixelA < 18 && paletteA > 42) {
+      d += (paletteA - pixelA) * 0.45;
+    }
+    // 像素中等红(18≤a*<30) → 对极高红度色板(a*>55)轻度惩罚
+    if (pixelA >= 18 && pixelA < 30 && paletteA > 55) {
+      d += (paletteA - 55) * 0.3;
     }
 
     if (d < minDist) {

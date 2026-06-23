@@ -437,6 +437,13 @@ export default function PerlerPage() {
                 <div className="flex justify-between text-[11px] text-gray-400 mt-0.5">
                   <span>4 极简</span><span>→</span><span>60 丰富</span>
                 </div>
+                {/* 实际用色数提示 */}
+                {pattern && pattern.colorStats.length < maxColors && (
+                  <p className="text-[11px] text-gray-400 mt-1.5 leading-snug">
+                    💡 原图只含 <span className="text-gray-600 font-semibold">{pattern.colorStats.length}</span> 种 Mard 色，
+                    上限 {maxColors} 未被完全使用（调色板中没有更接近的颜色可增加）
+                  </p>
+                )}
               </div>
 
               <button
@@ -499,10 +506,23 @@ export default function PerlerPage() {
               <>
                 {/* 工具栏 */}
                 <div className="bg-white rounded-2xl px-4 py-2.5 flex items-center justify-between shadow-sm flex-wrap gap-2">
-                  <div className="text-sm text-gray-600">
-                    <span className="font-bold text-gray-800">{pattern.gridW}×{pattern.gridH}</span>格 ·{' '}
-                    <span className="font-bold text-amber-500">{pattern.colorStats.length}</span> 色 ·{' '}
+                  <div className="text-sm text-gray-600 flex items-center gap-1.5 flex-wrap">
+                    <span className="font-bold text-gray-800">{pattern.gridW}×{pattern.gridH}</span>
+                    <span className="text-gray-300">·</span>
+                    <span>
+                      <span className="font-bold text-amber-500">{pattern.colorStats.length}</span>
+                      {pattern.colorStats.length < maxColors && (
+                        <span className="text-gray-400 text-xs">/{maxColors}</span>
+                      )}
+                      <span className="text-gray-500"> 色</span>
+                    </span>
+                    <span className="text-gray-300">·</span>
                     <span className="text-gray-400">{(pattern.gridW * pattern.gridH).toLocaleString()} 颗豆</span>
+                    {pattern.colorStats.length < maxColors && (
+                      <span className="text-[11px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">
+                        图案颜色已饱和
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => setViewScale(s => Math.max(0.2, +(s - 0.1).toFixed(1)))}
