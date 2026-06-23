@@ -330,9 +330,10 @@ export function findNearestMardColor(
     const paletteA  = lab[1];
 
     // ① 饱和度门控：低色度像素不映射到高饱和颜色（防灰/白→紫）
-    if      (pixelChroma < 8  && paletteChroma > 18) d += 32;
-    else if (pixelChroma < 18 && paletteChroma > 30) d += 18;
-    else if (pixelChroma < 28 && paletteChroma > 50) d += 10;
+    // 注意：阈值 >28 而非 >18，避免误拦截 G4/G16 浅肤色 (C*≈21)
+    if      (pixelChroma < 8  && paletteChroma > 28) d += 32;
+    else if (pixelChroma < 18 && paletteChroma > 36) d += 18;
+    else if (pixelChroma < 28 && paletteChroma > 55) d += 10;
 
     // ② 亮度差惩罚：像素比色板颜色亮很多时，不允许匹配到深色高饱和颜色
     // 阈值从 L>58 降到 L>48，覆盖皮肤中间调
