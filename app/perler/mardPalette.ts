@@ -302,8 +302,7 @@ export function getPaletteLab() {
   return _paletteLab;
 }
 
-// ===== 找最近 Mard 颜色（ΔE2000 + 饱和度门控）=====
-// 饱和度门控：低色度像素不会被映射到高饱和度色板颜色（防止灰/白雪被映射成紫色）
+// ===== 找最近 Mard 颜色（ΔE2000 + 饱和度门控 + 亮度差惩罚）=====
 export function findNearestMardColor(
   r: number,
   g: number,
@@ -313,7 +312,7 @@ export function findNearestMardColor(
   const paletteLab = getPaletteLab();
   const pixelLab = rgbToLab(r, g, b);
 
-  // 像素的色度 C* = sqrt(a*² + b*²)
+  const pixelL      = pixelLab[0];
   const pixelChroma = Math.sqrt(pixelLab[1] ** 2 + pixelLab[2] ** 2);
 
   let minDist = Infinity;
@@ -324,15 +323,22 @@ export function findNearestMardColor(
 
     let d = deltaE2000(pixelLab, lab);
 
-    // 饱和度门控：像素色度低 → 对高饱和色板颜色施加惩罚
-    // 防止灰、白、浅色像素被映射到鲜艳的紫色/红色等
     const paletteChroma = Math.sqrt(lab[1] ** 2 + lab[2] ** 2);
-    if (pixelChroma < 8 && paletteChroma > 18) {
-      d += 30; // 几乎无色像素：强烈惩罚彩色
-    } else if (pixelChroma < 18 && paletteChroma > 30) {
-      d += 15; // 低饱和像素：适度惩罚高饱和
-    } else if (pixelChroma < 28 && paletteChroma > 50) {
-      d += 8;  // 中等饱和像素：轻微惩罚极高饱和
+    const paletteL      = lab[0];
+
+    // ① 饱和度门控：低色度像素不映射到高饱和颜色（防灰/白→紫）
+    if (pixelChroma < 8  && paletteChroma > 18) d += 30;
+    else if (pixelChroma < 18 && paletteChroma > 30) d += 15;
+    else if (pixelChroma < 28 && paletteChroma > 50) d += 8;
+
+    // ② 亮度差惩罚：像素亮但色板颜色暗（防止浅色皮肤→深红）
+    // 亮像素(L>58) 不应该匹配到深色(L<52)的高饱和色板颜色
+    if (pixelL > 58 && paletteL < 52 && paletteChroma > 40) {
+      d += (pixelL - paletteL) * 0.55;   // 亮度差越大，惩罚越重
+    }
+    // 暗像素(L<45) 不应该匹配到亮色(L>62)的高饱和色板颜色
+    if (pixelL < 45 && paletteL > 62 && paletteChroma > 35) {
+      d += (paletteL - pixelL) * 0.4;
     }
 
     if (d < minDist) {
@@ -343,16 +349,18 @@ export function findNearestMardColor(
   return nearest;
 }
 
-// ===== 自动选取最佳 N 色（频率统计）=====
+// ===== 自动选取最佳 N 色（色度加权频率统计）=====
+// 高饱和像素（如红色球衣）每个只算 0.25 票，防止它们垄断颜色槽位
+// 低饱和像素（皮肤、灰色）每个计 1 票，保证细腻色区得到充分代表
 export function selectBestColors(
   pixelData: Uint8ClampedArray,
   maxColors: number,
   width: number,
   height: number
 ): Set<string> {
-  const colorCount = new Map<string, number>();
-  // 采样约 3000 个点
-  const step = Math.max(1, Math.floor((width * height) / 3000));
+  const colorScore = new Map<string, number>();
+  // 采样约 4000 个点
+  const step = Math.max(1, Math.floor((width * height) / 4000));
 
   for (let i = 0; i < width * height; i += step) {
     const r = pixelData[i * 4];
@@ -360,11 +368,21 @@ export function selectBestColors(
     const b = pixelData[i * 4 + 2];
     const a = pixelData[i * 4 + 3];
     if (a < 128) continue;
+
+    const lab    = rgbToLab(r, g, b);
+    const chroma = Math.sqrt(lab[1] ** 2 + lab[2] ** 2);
+
+    // 色度越高，权重越低（高饱和像素票少，皮肤/灰色票多）
+    const weight =
+      chroma > 55 ? 0.2 :
+      chroma > 38 ? 0.45 :
+      chroma > 22 ? 0.75 : 1.0;
+
     const nearest = findNearestMardColor(r, g, b);
-    colorCount.set(nearest.code, (colorCount.get(nearest.code) || 0) + 1);
+    colorScore.set(nearest.code, (colorScore.get(nearest.code) || 0) + weight);
   }
 
-  // 按频率取前 maxColors 种
-  const sorted = [...colorCount.entries()].sort((a, b) => b[1] - a[1]);
+  // 按加权分取前 maxColors 种
+  const sorted = [...colorScore.entries()].sort((a, b) => b[1] - a[1]);
   return new Set(sorted.slice(0, maxColors).map(e => e[0]));
 }
